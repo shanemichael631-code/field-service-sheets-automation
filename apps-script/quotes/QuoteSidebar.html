@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  * { box-sizing: border-box; }
+  body { font: 13px Arial, Helvetica, sans-serif; color: #1f2a37; margin: 0; padding: 10px; }
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #5b6675; margin: 14px 0 6px; }
+  input, textarea { width: 100%; font: inherit; padding: 5px 6px; border: 1px solid #c9d1da; border-radius: 4px; }
+  textarea { resize: vertical; }
+  .row { display: flex; gap: 6px; } .row > * { flex: 1; }
+  button { font: inherit; padding: 6px 10px; border-radius: 4px; border: 1px solid #c9d1da; background: #fff; cursor: pointer; }
+  button.primary { background: #0b6e99; color: #fff; border-color: #0b6e99; font-weight: bold; }
+  button:disabled { opacity: .5; cursor: default; }
+  .results div { padding: 6px; border-bottom: 1px solid #eef1f4; cursor: pointer; }
+  .results div:hover { background: #f2f7fa; }
+  .muted { color: #5b6675; font-size: 11px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 4px 2px; border-bottom: 1px solid #eef1f4; vertical-align: top; }
+  td input { padding: 3px 4px; }
+  .num { text-align: right; white-space: nowrap; }
+  .x { border: 0; background: none; color: #b42318; padding: 0 4px; }
+  .totals td { border: 0; padding: 2px; }
+  .msg { padding: 6px 8px; border-radius: 4px; margin-top: 8px; font-size: 12px; }
+  .err { background: #fdecea; color: #8a1c13; } .warn { background: #fff4e5; color: #8a4b00; } .ok { background: #e7f6ec; color: #065f35; }
+  .internal { background: #f5f7f9; border-radius: 4px; padding: 6px 8px; margin-top: 6px; font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <input id="load" placeholder="Reopen quote # (optional)">
+    <button onclick="loadQuote()" style="flex:0 0 auto;">Open</button>
+  </div>
+  <div class="muted" id="revising"></div>
+
+  <h3>Customer</h3>
+  <input id="cName" placeholder="Name *">
+  <input id="cAddr" placeholder="Address" style="margin-top:4px;">
+  <div class="row" style="margin-top:4px;"><input id="cPhone" placeholder="Phone"><input id="cEmail" placeholder="Email"></div>
+
+  <h3>Add items</h3>
+  <input id="q" placeholder="Search name, SKU, brand or part #" oninput="debouncedSearch()">
+  <div class="results" id="results"></div>
+
+  <h3>Quote</h3>
+  <table id="lines"></table>
+  <div class="row" style="margin-top:6px;">
+    <label class="muted">Labor hours<input id="hours" type="number" min="0" step="0.25" value="0" oninput="changed()"></label>
+    <label class="muted">Rate ($/hr)<input id="rate" type="number" min="0" step="1" oninput="changed()"></label>
+  </div>
+  <textarea id="notes" rows="2" placeholder="Notes shown on the quote" style="margin-top:6px;" oninput="changed()"></textarea>
+
+  <table class="totals" id="totals" style="margin-top:8px;"></table>
+  <div id="messages"></div>
+
+  <div class="row" style="margin-top:10px;">
+    <button onclick="preview()">Refresh totals</button>
+    <button class="primary" id="create" onclick="createPdf()">Create PDF</button>
+  </div>
+  <div id="result"></div>
+
+<script>
+  var state = { lines: [], reviseOf: '' };
+  var timer = null, previewTimer = null;
+  function $(id) { return document.getElementById(id); }
+  function money(c) { return '$' + (c / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function run() { return google.script.run.withFailureHandler(function (e) { show([{ cls: 'err', text: e.message || String(e) }]); }); }
+
+  run().withSuccessHandler(function (d) { $('rate').value = d.laborRate; }).getSidebarData();
+
+  function debouncedSearch() { clearTimeout(timer); timer = setTimeout(doSearch, 250); }
+  function doSearch() {
+    var q = $('q').value.trim();
+    if (!q) { $('results').innerHTML = ''; return; }
+    run().withSuccessHandler(function (items) {
+      $('results').innerHTML = items.length ? items.map(function (it, i) {
+        return '<div onclick="addItem(' + i + ')"><b>' + esc(it.name) + '</b> <span style="float:right;">' + money(it.priceCents) + '</span><br>' +
+          '<span class="muted">' + esc([it.manufacturer, it.partNumber, it.sku].filter(Boolean).join(' · ')) + ' · ' + (it.unit === 'each' ? 'each' : 'per ' + esc(it.unit)) + '</span></div>';
+      }).join('') : '<div class="muted">No matches.</div>';
+      window._results = items;
+    }).searchCatalog(q);
+  }
+  function addItem(i) {
+    var it = window._results[i];
+    var existing = state.lines.filter(function (l) { return l.sku === it.sku; })[0];
+    if (existing) existing.qty = Number(existing.qty) + 1; else state.lines.push({ sku: it.sku, name: it.name, qty: 1, discountPct: 0, unit: it.unit });
+    $('q').value = ''; $('results').innerHTML = '';
+    drawLines(); changed();
+  }
+  function drawLines() {
+    $('lines').innerHTML = state.lines.length ? '<tr class="muted"><td>Item</td><td class="num">Qty</td><td class="num">Disc %</td><td></td></tr>' +
+      state.lines.map(function (l, i) {
+        return '<tr><td>' + esc(l.name) + '<div class="muted">' + esc(l.sku) + '</div></td>' +
+          '<td style="width:52px;"><input type="number" min="0" step="0.5" value="' + l.qty + '" oninput="setLine(' + i + ',\'qty\',this.value)"></td>' +
+          '<td style="width:52px;"><input type="number" min="0" max="100" step="1" value="' + l.discountPct + '" oninput="setLine(' + i + ',\'discountPct\',this.value)"></td>' +
+          '<td style="width:18px;"><button class="x" title="Remove" onclick="removeLine(' + i + ')">✕</button></td></tr>';
+      }).join('') : '<tr><td class="muted">Search above and click an item to add it.</td></tr>';
+  }
+  function setLine(i, k, v) { state.lines[i][k] = v; changed(); }
+  function removeLine(i) { state.lines.splice(i, 1); drawLines(); changed(); }
+  function changed() { clearTimeout(previewTimer); previewTimer = setTimeout(preview, 400); }
+
+  function input() {
+    return {
+      customer: { name: $('cName').value, address: $('cAddr').value, phone: $('cPhone').value, email: $('cEmail').value },
+      lines: state.lines.map(function (l) { return { sku: l.sku, qty: Number(l.qty), discountPct: Number(l.discountPct) || 0 }; }),
+      laborHours: Number($('hours').value) || 0,
+      laborRateCents: Math.round((Number($('rate').value) || 0) * 100),
+      notes: $('notes').value,
+      reviseOf: state.reviseOf
+    };
+  }
+  function preview() {
+    run().withSuccessHandler(function (r) {
+      var t = r.totals;
+      $('totals').innerHTML =
+        '<tr><td>Materials</td><td class="num">' + money(t.materialsCents) + '</td></tr>' +
+        (t.laborCents ? '<tr><td>Labor</td><td class="num">' + money(t.laborCents) + '</td></tr>' : '') +
+        '<tr><td>Tax (' + t.taxPct + '%)</td><td class="num">' + money(t.taxCents) + '</td></tr>' +
+        '<tr><td><b>Total</b></td><td class="num"><b>' + money(t.totalCents) + '</b></td></tr>';
+      var msgs = r.errors.filter(function (e) { return !/Customer name/.test(e) || state.lines.length; })
+        .map(function (e) { return { cls: 'err', text: e }; })
+        .concat(r.warnings.map(function (w) { return { cls: 'warn', text: w }; }));
+      show(msgs, '<div class="internal">Internal only, not on the PDF: cost ' + money(t.costCents) + ' · gross profit ' + money(t.grossProfitCents) +
+        ' · margin ' + (t.marginPct === null ? '—' : t.marginPct + '%') + '</div>');
+    }).previewQuote(input());
+  }
+  function show(msgs, extra) {
+    $('messages').innerHTML = (extra || '') + msgs.map(function (m) { return '<div class="msg ' + m.cls + '">' + esc(m.text) + '</div>'; }).join('');
+  }
+  function createPdf() {
+    $('create').disabled = true; $('result').innerHTML = '<div class="msg">Creating PDF…</div>';
+    run().withSuccessHandler(function (r) {
+      $('create').disabled = false;
+      if (r.errors && r.errors.length) { $('result').innerHTML = r.errors.map(function (e) { return '<div class="msg err">' + esc(e) + '</div>'; }).join(''); return; }
+      $('result').innerHTML = '<div class="msg ok">Quote <b>' + esc(r.number) + '</b> saved for ' + money(r.totalCents) + '.<br>' +
+        (r.url ? '<a href="' + esc(r.url) + '" target="_blank">Open the PDF</a> (in Drive › ' + esc(r.folder) + ')' : esc(r.folder || '')) + '</div>';
+      state.reviseOf = r.number; $('revising').textContent = 'Editing ' + r.number + '. Creating again saves a revision.';
+    }).createQuote(input());
+  }
+  function loadQuote() {
+    var n = $('load').value.trim(); if (!n) return;
+    run().withSuccessHandler(function (q) {
+      if (!q) { show([{ cls: 'err', text: 'Quote ' + n + ' was not found in the Quotes Log.' }]); return; }
+      $('cName').value = q.customer.name || ''; $('cAddr').value = q.customer.address || '';
+      $('cPhone').value = q.customer.phone || ''; $('cEmail').value = q.customer.email || '';
+      $('hours').value = q.laborHours || 0; $('rate').value = (q.laborRateCents || 0) / 100; $('notes').value = q.notes || '';
+      state.lines = q.lines; state.reviseOf = q.number;
+      $('revising').textContent = 'Revising ' + q.number + '. Creating the PDF saves it as a new revision.';
+      drawLines(); preview();
+    }).loadQuote(n);
+  }
+  drawLines();
+</script>
+</body>
+</html>

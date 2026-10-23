@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weekly Report Demo</title>
+<style>
+  body { margin: 0; background: #f3f5f7; font: 14px system-ui, sans-serif; color: #1f2a37; }
+  .bar { background: #fff; border-bottom: 1px solid #e3e7ec; padding: 10px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .demo { background: #fff4e5; color: #8a4b00; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+  .sheet { background: #fff; max-width: 760px; margin: 20px auto; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  select { font: inherit; padding: 4px; }
+  /* ?clean: no toolbar, for portfolio images and PDFs */
+  body.clean { background: #fff; }
+  body.clean .bar { display: none; }
+  body.clean .sheet { box-shadow: none; margin: 0 auto; padding: 32px 40px; }
+  .note { display: none; box-sizing: border-box; max-width: 760px; margin: 0 auto 24px; padding: 0 40px; font: 11px Arial, Helvetica, sans-serif; color: #8a4b00; }
+  body.clean .note { display: block; }
+  @media print {
+    @page { margin: 12mm; }
+    body.clean .sheet { padding: 0; } .note { padding: 0; }
+    /* keep each section heading on the same page as its table */
+    .sheet table { break-inside: avoid; }
+    .sheet div[style*="font-size:15px"] { break-after: avoid; break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <strong>Weekly KPI Report</strong>
+  <label>Week: <select id="week"></select></label>
+  <span class="demo">Demo: fictional company, made-up data</span>
+</div>
+<div class="sheet" id="report">Loading…</div>
+<div class="note">Demo: fictional company and made-up data. Built with Google Sheets + Apps Script; emails automatically every Monday.</div>
+<script src="../apps-script/ReportCore.js"></script>
+<script>
+  if (/[?&]clean\b/.test(location.search)) document.body.classList.add('clean');
+  Promise.all(['jobs', 'quotes', 'settings'].map(function (n) {
+    return fetch('sample-data/' + n + '.csv').then(function (r) { return r.text(); });
+  })).then(function (texts) {
+    var jobs = ReportCore.rowsFromTable(ReportCore.parseCsv(texts[0]));
+    var quotes = ReportCore.rowsFromTable(ReportCore.parseCsv(texts[1]));
+    var settings = {};
+    ReportCore.rowsFromTable(ReportCore.parseCsv(texts[2])).forEach(function (r) { settings[r.Setting] = r.Value; });
+
+    var weeks = {};
+    jobs.forEach(function (j) {
+      var d = ReportCore.parseDate(j['Completed Date']);
+      if (d) weeks[ReportCore.weekStart(d).getTime()] = true;
+    });
+    var select = document.getElementById('week');
+    Object.keys(weeks).map(Number).sort(function (a, b) { return b - a; }).forEach(function (t) {
+      var start = new Date(t);
+      var opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = ReportCore.formatWeek({ start: start, end: ReportCore.addDays(start, 6) });
+      select.appendChild(opt);
+    });
+    function render() {
+      var report = ReportCore.buildReport(jobs, quotes, {
+        weekStart: new Date(Number(select.value)),
+        filterChangeType: settings['Filter Change Job Type']
+      });
+      document.getElementById('report').innerHTML = ReportCore.renderHtml(report, { companyName: settings['Company Name'] });
+    }
+    select.addEventListener('change', render);
+    render();
+  });
+</script>
+</body>
+</html>

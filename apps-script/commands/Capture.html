@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body { font: 16px Arial, Helvetica, sans-serif; color: #1f2a37; margin: 0; padding: 16px; background: #f3f5f7; }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  textarea, select { width: 100%; font: inherit; padding: 10px; border: 1px solid #c9d1da; border-radius: 8px; background: #fff; }
+  textarea { min-height: 110px; resize: vertical; }
+  .row { display: flex; gap: 8px; margin-top: 10px; }
+  button { font: inherit; padding: 12px; border-radius: 8px; border: 1px solid #c9d1da; background: #fff; }
+  button.primary { flex: 1; background: #0b6e99; color: #fff; border-color: #0b6e99; font-weight: bold; }
+  button.mic { width: 56px; font-size: 20px; }
+  button.mic.on { background: #b42318; color: #fff; border-color: #b42318; }
+  .card { background: #fff; border: 1px solid #e3e7ec; border-radius: 8px; padding: 12px; margin-top: 14px; }
+  .k { color: #5b6675; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 13px; font-weight: bold; }
+  .Inbox { background: #e7f6ec; color: #065f35; } .Waiting { background: #eef2f6; color: #1f2a37; }
+  .Needs { background: #fff4e5; color: #8a4b00; }
+  .err { color: #8a1c13; }
+  .muted { color: #5b6675; font-size: 13px; }
+  ul { margin: 6px 0 0; padding-left: 18px; }
+</style>
+</head>
+<body>
+  <h1>Add a task</h1>
+  <textarea id="text" placeholder='e.g. "Hiring. Post the tech job ad by Friday, urgent"'></textarea>
+  <div class="row">
+    <select id="project"><option value="">Project: figure it out from what I said</option></select>
+  </div>
+  <div class="row">
+    <button class="mic" id="mic" title="Speak" onclick="toggleMic()">🎤</button>
+    <button class="primary" id="save" onclick="save()">Save task</button>
+  </div>
+  <div class="muted" style="margin-top:8px;">Say the project, what to do, and when. Anything unclear goes to <b>Needs Review</b> instead of being guessed.</div>
+  <div id="result"></div>
+
+<script>
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  google.script.run.withSuccessHandler(function (projects) {
+    projects.forEach(function (p) {
+      var o = document.createElement('option'); o.value = p.name; o.textContent = p.name + (p.business ? ' (' + p.business + ')' : '');
+      $('project').appendChild(o);
+    });
+  }).getProjectsForCapture();
+
+  function save() {
+    var text = $('text').value.trim();
+    if (!text) { $('text').focus(); return; }
+    $('save').disabled = true; $('save').textContent = 'Saving…';
+    google.script.run
+      .withSuccessHandler(function (t) {
+        $('save').disabled = false; $('save').textContent = 'Save task';
+        $('text').value = '';
+        var cls = t.status === 'Needs Review' ? 'Needs' : t.status;
+        $('result').innerHTML = '<div class="card"><span class="tag ' + cls + '">' + esc(t.status) + '</span> <b>' + esc(t.id) + '</b>' +
+          '<div style="margin-top:8px;font-size:17px;"><b>' + esc(t.title) + '</b></div>' +
+          '<div class="muted">' + esc([t.project || 'No project', t.dueText ? 'due ' + t.dueText : 'no due date', t.priority, t.waitingOn ? 'waiting on ' + t.waitingOn : ''].filter(Boolean).join(' · ')) + '</div>' +
+          (t.reasons.length ? '<div class="k" style="margin-top:10px;">Needs review because</div><ul>' + t.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' : '') +
+          '</div>' + $('result').innerHTML.replace(/^<div class="card">/, '<div class="card" style="opacity:.6;">');
+      })
+      .withFailureHandler(function (e) {
+        $('save').disabled = false; $('save').textContent = 'Save task';
+        $('result').innerHTML = '<div class="card err">Not saved: ' + esc(e.message || e) + '. Your text is still in the box; try again.</div>';
+      })
+      .captureTask(text, $('project').value);
+  }
+
+  // Voice: Chrome on Android supports this; elsewhere the keyboard's mic key works too.
+  var rec = null;
+  function toggleMic() {
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert('Use the microphone key on your keyboard to dictate.'); $('text').focus(); return; }
+    if (rec) { rec.stop(); return; }
+    rec = new SR(); rec.lang = 'en-US'; rec.interimResults = false;
+    rec.onresult = function (e) { var said = e.results[0][0].transcript; $('text').value = ($('text').value + ' ' + said).trim(); };
+    rec.onend = function () { rec = null; $('mic').classList.remove('on'); };
+    $('mic').classList.add('on'); rec.start();
+  }
+</script>
+</body>
+</html>

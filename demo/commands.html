@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Command Center Demo</title>
+<style>
+  body { margin: 0; background: #f3f5f7; font: 14px system-ui, sans-serif; color: #1f2a37; }
+  .bar { background: #fff; border-bottom: 1px solid #e3e7ec; padding: 10px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .demo { background: #fff4e5; color: #8a4b00; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+  .layout { display: flex; gap: 20px; padding: 16px; align-items: flex-start; flex-wrap: wrap; }
+  .phone { width: 360px; flex: 0 0 360px; border: 10px solid #1f2a37; border-radius: 28px; overflow: hidden; background: #f3f5f7; }
+  .phone .top { background: #1f2a37; color: #fff; font-size: 11px; padding: 2px 14px 6px; display: flex; justify-content: space-between; }
+  .phone iframe { width: 100%; height: 640px; border: 0; display: block; }
+  .main { flex: 1; min-width: 320px; }
+  .tabs button { font: inherit; padding: 6px 12px; border: 1px solid #c9d1da; background: #fff; border-radius: 4px; cursor: pointer; }
+  .tabs button.on { background: #0b6e99; color: #fff; border-color: #0b6e99; }
+  .paper { background: #fff; padding: 20px 24px; margin-top: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .summary { font-weight: bold; font-size: 15px; margin-bottom: 12px; }
+  table.v { border-collapse: collapse; width: 100%; font-size: 13px; margin-bottom: 14px; }
+  table.v th { text-align: left; padding: 6px 8px; font-weight: bold; }
+  table.v td { padding: 5px 8px; border-bottom: 1px solid #e3e7ec; }
+  .muted { color: #5b6675; } .late { color: #b42318; font-weight: bold; } .p1 { color: #b42318; font-weight: bold; }
+  .new { background: #fffbe6; }
+  body.clean { background: #fff; }
+  body.clean .bar, body.clean .tabs { display: none; }
+  body.clean .layout { padding: 0; }
+  body.clean .paper { box-shadow: none; margin: 0; }
+  body.clean.only-phone .main, body.clean.only-main .phone { display: none; }
+  body.clean.only-phone .layout { padding: 12px; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <strong>Command Center</strong>
+  <span class="demo">Demo: made-up businesses and tasks · "today" is Fri, Oct 23, 2026</span>
+</div>
+<div class="layout">
+  <div class="phone"><div class="top"><span>9:41</span><span>Add a task</span><span>● ● ●</span></div><iframe id="capture"></iframe></div>
+  <div class="main">
+    <div class="tabs">
+      <button data-v="views" class="on">Command Center sheet</button>
+      <button data-v="digest">7am digest email</button>
+      <button data-v="tasks">Tasks (master list)</button>
+    </div>
+    <div class="paper" id="view">Loading…</div>
+  </div>
+</div>
+<script src="../apps-script/ReportCore.js"></script>
+<script src="../apps-script/commands/CommandCore.js"></script>
+<script>
+  var R = ReportCore, C = CommandCore, e = R.escapeHtml;
+  var params = new URLSearchParams(location.search);
+  var viewParam = params.get('view');
+  if (params.has('clean')) document.body.classList.add('clean', viewParam === 'phone' ? 'only-phone' : 'only-main');
+  var current = viewParam && viewParam !== 'phone' ? viewParam : 'views';
+  var DATA = {}, TODAY = new Date(2026, 9, 23), newest = '';
+
+  function projects() {
+    return DATA.projects.filter(function (r) { return r.Project; }).map(function (r) {
+      return { name: r.Project, business: r.Business, aliases: String(r.Aliases || '').split(',').map(function (a) { return a.trim(); }).filter(Boolean) };
+    });
+  }
+
+  // Stand-in for the Apps Script functions in Command.js (in-memory instead of Sheets).
+  window.SERVER = {
+    getProjectsForCapture: function () { return projects().map(function (p) { return { name: p.name, business: p.business }; }); },
+    captureTask: function (text, project) {
+      var t = C.parseCapture(text, { today: TODAY, projects: projects(), project: project });
+      var id = C.nextId(DATA.tasks.map(function (r) { return r.ID; }));
+      DATA.tasks.push({ ID: id, Created: TODAY, Source: 'Phone', 'Original Text': t.original, Title: t.title, Project: t.project,
+        Business: t.business, Due: t.due || '', Priority: t.priority, Status: t.status, 'Waiting On': t.waitingOn, Link: '',
+        'Review Reasons': t.reasons.join(' ') });
+      newest = id;
+      show(current);
+      return { id: id, title: t.title, project: t.project, priority: t.priority, status: t.status, waitingOn: t.waitingOn,
+        dueText: t.due ? R.formatDate(t.due) : '', reasons: t.reasons };
+    }
+  };
+
+  var SHIM = '<script>(function(){function runner(ok,fail){return new Proxy({},{get:function(_,n){' +
+    'if(n==="withSuccessHandler")return function(f){return runner(f,fail)};' +
+    'if(n==="withFailureHandler")return function(f){return runner(ok,f)};' +
+    'return function(){var a=JSON.parse(JSON.stringify([].slice.call(arguments)));setTimeout(function(){try{' +
+    'var r=parent.SERVER[n].apply(null,a);ok&&ok(r===undefined?r:JSON.parse(JSON.stringify(r)))}catch(err){fail&&fail(err)}},30)}}})}' +
+    'window.google={script:{run:runner()}}})();<\/script>';
+
+  function views() { return C.buildViews(C.readTasks(DATA.tasks), TODAY); }
+
+  function show(v) {
+    current = v;
+    document.querySelectorAll('.tabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === v); });
+    var view = document.getElementById('view'), w = views();
+    if (v === 'digest') { view.innerHTML = C.renderDigest(w, { title: 'Command Center (demo)' }); return; }
+    if (v === 'tasks') {
+      view.innerHTML = '<div class="summary">Tasks: one master list for every business (' + DATA.tasks.length + ' rows)</div><table class="v"><tr class="muted"><th>ID</th><th>Title</th><th>Project</th><th>Due</th><th>Pri</th><th>Status</th><th>Source</th><th>What was said</th></tr>' +
+        DATA.tasks.slice().reverse().map(function (r) {
+          var due = R.parseDate(r.Due);
+          return '<tr class="' + (r.ID === newest ? 'new' : '') + '"><td>' + e(r.ID) + '</td><td>' + e(r.Title) + '</td><td>' + e(r.Project) + '</td><td>' + (due ? R.formatDate(due) : '') +
+            '</td><td>' + e(r.Priority) + '</td><td>' + e(r.Status) + '</td><td>' + e(r.Source) + '</td><td class="muted">' + e(r['Original Text']) + '</td></tr>';
+        }).join('') + '</table>';
+      return;
+    }
+    function section(title, list, bg) {
+      var h = '<table class="v"><tr style="background:' + bg + ';"><th style="width:46%;">' + title + ' (' + list.length + ')</th><th>Project</th><th>Due</th><th>Priority</th><th>Status / waiting on</th></tr>';
+      if (!list.length) return h + '<tr><td colspan="5" class="muted">Nothing here.</td></tr></table>';
+      return h + list.map(function (t) {
+        return '<tr class="' + (t.id === newest ? 'new' : '') + '"><td>' + (t.link ? '<a href="#" onclick="return false">' + e(t.title) + '</a>' : e(t.title)) + '</td><td>' + e(t.project || '—') +
+          '</td><td class="' + (t.due && t.due < w.today ? 'late' : '') + '">' + e(C.dueLabel(t, w.today)) + '</td><td class="' + (t.priority === 'P1' ? 'p1' : '') + '">' + e(t.priority) +
+          '</td><td class="muted">' + e(t.waitingOn ? 'Waiting on ' + t.waitingOn : (t.reasons || t.status)) + '</td></tr>';
+      }).join('') + '</table>';
+    }
+    view.innerHTML = '<div class="summary">Command Center (demo) · Fri, Oct 23 · ' + w.openCount + ' open · ' + w.overdue.length + ' overdue · ' +
+      w.dueToday.length + ' due today · ' + w.needsReview.length + ' to review</div>' +
+      section('OVERDUE', w.overdue, '#fdecea') + section('DUE TODAY', w.dueToday, '#e7f6ec') + section('NEEDS REVIEW', w.needsReview, '#fff4e5') +
+      section('NEXT 7 DAYS', w.next7, '#eef2f6') + section('WAITING ON OTHERS', w.waiting, '#eef2f6');
+  }
+  document.querySelectorAll('.tabs button').forEach(function (b) { b.onclick = function () { show(b.dataset.v); }; });
+
+  Promise.all(['projects', 'tasks'].map(function (n) {
+    return fetch('sample-data/commands/' + n + '.csv').then(function (r) { return r.text(); });
+  })).then(function (t) {
+    DATA.projects = R.rowsFromTable(R.parseCsv(t[0]));
+    DATA.tasks = R.rowsFromTable(R.parseCsv(t[1]));
+    show(current);
+    return fetch('../apps-script/commands/Capture.html').then(function (r) { return r.text(); });
+  }).then(function (html) {
+    var frame = document.getElementById('capture');
+    frame.srcdoc = html.replace('<head>', '<head>' + SHIM);
+    if (params.has('sample')) frame.onload = function () {
+      var w = frame.contentWindow;
+      setTimeout(function () {
+        w.document.getElementById('text').value = 'Hiring. Call the two new tech applicants by Monday, urgent';
+        w.save();
+        setTimeout(function () {
+          w.document.getElementById('text').value = 'call the guy about the thing next week';
+          w.save();
+          setTimeout(function () { w.document.getElementById('text').value = 'Trucks - get the oil changed on van 3 tomorrow'; }, 300);
+        }, 300);
+      }, 300);
+    };
+  });
+</script>
+</body>
+</html>

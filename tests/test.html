@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ReportCore tests</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 24px; background: #fff; color: #1f2a37; }
+  .pass { color: #067647; } .fail { color: #b42318; font-weight: bold; }
+  pre { margin: 2px 0 8px 20px; color: #b42318; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1 id="summary">Running…</h1>
+<div id="out"></div>
+<script>
+  window.TestKit = (function () {
+    var tests = [];
+    function fmt(v) { return v instanceof Date ? v.toISOString() : JSON.stringify(v); }
+    return {
+      test: function (name, fn) { tests.push({ name: name, fn: fn }); },
+      eq: function (a, b) { if (a !== b) throw new Error('expected ' + fmt(b) + ' but got ' + fmt(a)); },
+      ok: function (v) { if (!v) throw new Error('expected truthy, got ' + fmt(v)); },
+      run: function () {
+        var out = document.getElementById('out'), failed = 0;
+        tests.forEach(function (t) {
+          var div = document.createElement('div');
+          try { t.fn(); div.className = 'pass'; div.textContent = '✓ ' + t.name; }
+          catch (e) { failed++; div.className = 'fail'; div.textContent = '✗ ' + t.name;
+            var pre = document.createElement('pre'); pre.textContent = e.message; div.appendChild(pre); }
+          out.appendChild(div);
+        });
+        var msg = (tests.length - failed) + '/' + tests.length + ' passed';
+        document.getElementById('summary').textContent = msg;
+        document.title = (failed ? 'FAIL ' : 'PASS ') + msg;
+      }
+    };
+  })();
+</script>
+<script src="../apps-script/ReportCore.js"></script>
+<script src="../apps-script/reminders/ReminderCore.js"></script>
+<script src="../apps-script/quotes/QuoteCore.js"></script>
+<script src="../apps-script/commands/CommandCore.js"></script>
+<script src="reportCore.test.js"></script>
+<script src="reminderCore.test.js"></script>
+<script src="quoteCore.test.js"></script>
+<script src="commandCore.test.js"></script>
+<script>TestKit.run();</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+Category,Method,Value %,Min Margin %
+Chemicals,markup,45,25
+Parts,margin,40,30
+Equipment,markup,30,18
+Services,markup,0,

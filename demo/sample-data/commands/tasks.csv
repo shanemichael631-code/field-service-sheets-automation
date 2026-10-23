@@ -1,0 +1,26 @@
+ID,Created,Source,Original Text,Title,Project,Business,Due,Priority,Status,Waiting On,Link,Review Reasons
+T-0001,2026-10-19,Gmail,Email from Agent <agent@example.com>: Renewal notice: commercial auto,Renew commercial auto insurance for the vans,Truck Fleet,Clearwell Water (demo),2026-10-19,P1,Next,,https://mail.google.com/mail/#inbox/demo1,
+T-0002,2026-10-16,Phone,Taxes. Send Q3 sales numbers to the CPA by Wednesday,Send Q3 sales numbers to the CPA,Taxes & Books,Personal (demo),2026-10-21,P2,Next,,,
+T-0003,2026-10-13,Phone,Route expansion - call back the Henderson pool remodel lead yesterday urgent,Call back the Henderson pool remodel lead,Pool Route Expansion,Bluewave Pool (demo),2026-10-22,P1,Inbox,,,
+T-0004,2026-10-21,Phone,"Hiring. Post the service tech job ad by Friday, urgent",Post the service tech job ad,Hiring,Clearwell Water (demo),2026-10-23,P1,Next,,,
+T-0005,2026-10-18,Manual,Ops: approve this week's payroll today asap,Approve this week's payroll,Service Ops,Clearwell Water (demo),2026-10-23,P1,Next,,,
+T-0006,2026-10-15,Phone,Upwork - reply to 2 client messages today,Reply to 2 Upwork client messages,Upwork,Freelance (demo),2026-10-23,P2,Inbox,,,
+T-0007,2026-10-12,Phone,Dispatch. Order filter cartridges for Monday's route tomorrow,Order filter cartridges for Monday's route,Service Ops,Clearwell Water (demo),2026-10-24,P2,Next,,,
+T-0008,2026-10-20,Phone,Hiring. Interview two plumber applicants on Monday,Interview two plumber applicants,Hiring,Clearwell Water (demo),2026-10-26,P2,Next,,,
+T-0009,2026-10-17,Manual,Need to get three quotes on new tires for van 2 by Monday,Get three quotes on new tires for van 2,Truck Fleet,Clearwell Water (demo),2026-10-26,P2,Inbox,,,
+T-0010,2026-10-14,Gmail,Email from Supplier <sales@example.com>: Updated price list,Compare chlorine prices from both suppliers,Supplier Pricing,Bluewave Pool (demo),2026-10-27,P2,Inbox,,https://mail.google.com/mail/#inbox/demo2,
+T-0011,2026-10-22,Phone,Website - finish the new homepage copy by Wednesday no rush,Finish the new homepage copy,Website Refresh,Bluewave Pool (demo),2026-10-28,P3,Next,,,
+T-0012,2026-10-19,Phone,Proposals. Send the Quote Builder proposal Thursday,Send the Quote Builder proposal,Upwork,Freelance (demo),2026-10-29,P2,Next,,,
+T-0013,2026-10-16,Phone,Ops. Schedule annual service on the shop water system next Friday someday,Schedule annual service on the shop water system,Service Ops,Clearwell Water (demo),2026-10-30,P3,Inbox,,,
+T-0014,2026-10-13,Manual,Books - file quarterly sales tax return by 11/4 urgent,File quarterly sales tax return,Taxes & Books,Personal (demo),2026-11-04,P1,Next,,,
+T-0015,2026-10-21,Phone,Route. Plan the spring pool opening schedule in 3 weeks,Plan the spring pool opening schedule,Pool Route Expansion,Bluewave Pool (demo),2026-11-12,P3,Inbox,,,
+T-0016,2026-10-18,Gmail,Email from Jordan Ellis <jordan@example.com>: Re: HOA pool contract,Signed contract from the Lakeview HOA,Pool Route Expansion,Bluewave Pool (demo),,P2,Waiting,Jordan Ellis,https://mail.google.com/mail/#inbox/demo3,
+T-0017,2026-10-15,Phone,Trucks - waiting on Mike Torres for the title paperwork for the used van,Title paperwork for the used van,Truck Fleet,Clearwell Water (demo),,P2,Waiting,Mike Torres,,
+T-0018,2026-10-12,Phone,Suppliers. Waiting on Dana Price for the updated salt price sheet,Updated price sheet from the salt supplier,Supplier Pricing,Bluewave Pool (demo),,P3,Waiting,Dana Price,,
+T-0019,2026-10-20,Phone,Ops - clean up the shared drive folders whenever,Clean up the shared drive folders,Service Ops,Clearwell Water (demo),,P3,Inbox,,,
+T-0020,2026-10-17,Manual,"Look into a second line for the office phone, ops",Look into a second line for the office phone,Service Ops,Clearwell Water (demo),,P2,Inbox,,,
+T-0021,2026-10-14,Phone,call him,Call him,,,,P2,Needs Review,,,No project recognized. Not enough detail to know what the task is.
+T-0022,2026-10-22,Phone,Hiring. Interview the two pool tech applicants next week,Interview the two pool tech applicants,Hiring,Clearwell Water (demo),,P2,Needs Review,,,"""next week"" isn't a specific day."
+T-0023,2026-10-19,Phone,Website and trucks budget review,Budget review for the website and trucks,,,,P2,Needs Review,,,"Mentions more than one project (Website Refresh, Truck Fleet)."
+T-0024,2026-10-16,Manual,Ops. Return the rented trencher,Return the rented trencher,Service Ops,Clearwell Water (demo),2026-10-13,P2,Done,,,
+T-0025,2026-10-13,Gmail,Email: Invoice due,Pay the October supplier invoice,Supplier Pricing,Bluewave Pool (demo),2026-10-17,P1,Done,,,

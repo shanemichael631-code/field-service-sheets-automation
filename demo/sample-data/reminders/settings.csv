@@ -1,0 +1,18 @@
+Setting,Value
+Company Name,Clearwell Water Co. (demo)
+Company Phone,(555) 555-0100
+Company Address,"100 Example Way, Maple Grove, ST 00000"
+Booking Link,https://example.com/book
+Reminder Subject,"{first_name}, your {equipment} is due for service"
+Reminder Body,"Hi {first_name},
+
+Your {equipment} is ready for its next service ({service}); {due_phrase}. Staying on schedule keeps your water clean and protects the system.
+
+Book a time here: {booking_link}
+Or call us at {phone}.
+
+Thanks,
+{company}"
+Remind Again After (days),21
+Look Ahead (days),30
+As Of Date,2026-10-19

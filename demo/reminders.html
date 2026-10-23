@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service Reminder Demo</title>
+<style>
+  body { margin: 0; background: #f3f5f7; font: 14px system-ui, sans-serif; color: #1f2a37; }
+  .bar { background: #fff; border-bottom: 1px solid #e3e7ec; padding: 10px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .demo { background: #fff4e5; color: #8a4b00; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+  .wrap { max-width: 1100px; margin: 20px auto; padding: 0 16px; }
+  .tiles { display: flex; gap: 12px; flex-wrap: wrap; }
+  .tile { background: #fff; border: 1px solid #e3e7ec; border-radius: 6px; padding: 12px 16px; flex: 1; min-width: 180px; }
+  .tile .k { font-size: 12px; color: #5b6675; } .tile .v { font-size: 24px; font-weight: bold; } .tile .s { font-size: 12px; color: #5b6675; }
+  .panel { background: #fff; border: 1px solid #e3e7ec; border-radius: 6px; margin-top: 16px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid #e3e7ec; text-align: left; white-space: nowrap; }
+  th { color: #5b6675; font-weight: normal; background: #f8fafb; }
+  td.num { text-align: right; }
+  .overdue { color: #b42318; font-weight: bold; } .soon { color: #0b6e99; font-weight: bold; }
+  .ready { color: #067647; } .skip { color: #8a4b00; }
+  .email { padding: 16px; white-space: pre-wrap; font-size: 13px; }
+  h2 { font-size: 15px; margin: 22px 0 0; }
+  .head { display: none; border-bottom: 3px solid #0b6e99; padding-bottom: 8px; margin-bottom: 16px; }
+  .head .k { font-size: 12px; color: #5b6675; text-transform: uppercase; letter-spacing: 1px; }
+  .head .t { font-size: 22px; font-weight: bold; } .head .d { font-size: 13px; color: #5b6675; }
+  .note { display: none; font-size: 11px; color: #8a4b00; margin-top: 16px; }
+  /* ?clean: no toolbar, for portfolio images and PDFs */
+  body.clean { background: #fff; }
+  body.clean .bar { display: none; }
+  body.clean .head, body.clean .note { display: block; }
+  body.clean .wrap { margin: 0 auto; padding: 32px 40px; }
+  @media print {
+    @page { margin: 10mm; size: letter landscape; }
+    body.clean .wrap { padding: 0; }
+    .panel, .tiles, h2 { break-inside: avoid; } h2 { break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <strong>Service Reminder Tracker</strong>
+  <span id="asof"></span>
+  <span class="demo">Demo: fictional company, made-up data</span>
+</div>
+<div class="wrap">
+  <div class="head"><div class="k">Service Reminder Tracker</div><div class="t" id="company"></div><div class="d" id="asof2"></div></div>
+  <div class="tiles" id="tiles"></div>
+  <h2>Due list</h2>
+  <div class="panel"><table id="due"></table></div>
+  <h2>Sample reminder email</h2>
+  <div class="panel email" id="email"></div>
+  <h2>Service schedule (set by the owner)</h2>
+  <div class="panel"><table id="schedule"></table></div>
+  <div class="note">Demo: fictional company and made-up data. Built with Google Sheets + Apps Script; refreshes every morning, emails only after one confirmation click.</div>
+</div>
+<script src="../apps-script/ReportCore.js"></script>
+<script src="../apps-script/reminders/ReminderCore.js"></script>
+<script>
+  var CLEAN = /[?&]clean\b/.test(location.search);
+  if (CLEAN) document.body.classList.add('clean');
+  var R = ReportCore;
+  Promise.all(['service-items', 'intervals', 'settings'].map(function (n) {
+    return fetch('sample-data/reminders/' + n + '.csv').then(function (r) { return r.text(); });
+  })).then(function (texts) {
+    var items = R.rowsFromTable(R.parseCsv(texts[0]));
+    var intervals = R.rowsFromTable(R.parseCsv(texts[1]));
+    var s = {};
+    R.rowsFromTable(R.parseCsv(texts[2])).forEach(function (r) { s[r.Setting] = r.Value; });
+    var settings = { companyName: s['Company Name'], companyPhone: s['Company Phone'], companyAddress: s['Company Address'],
+      bookingLink: s['Booking Link'], subject: s['Reminder Subject'], body: s['Reminder Body'] };
+    var list = ReminderCore.buildDueList(items, intervals, {
+      today: s['As Of Date'], windowDays: Number(s['Look Ahead (days)']), remindAgainDays: Number(s['Remind Again After (days)'])
+    });
+
+    var asOf = 'As of ' + R.formatDate(list.today) + ', ' + list.today.getFullYear();
+    document.getElementById('asof').textContent = asOf;
+    document.getElementById('asof2').textContent = asOf;
+    document.getElementById('company').textContent = settings.companyName;
+    function tile(k, v, sub) { return '<div class="tile"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + sub + '</div></div>'; }
+    document.getElementById('tiles').innerHTML =
+      tile('Overdue', list.overdue.count, R.formatMoney(list.overdue.valueCents) + ' in service waiting') +
+      tile('Due in next ' + list.windowDays + ' days', list.dueSoon.count, R.formatMoney(list.dueSoon.valueCents) + ' coming up') +
+      tile('Ready to email', list.toEmail.length, 'one click sends them all') +
+      tile('Need a phone call', list.rows.length - list.toEmail.length, 'no email, opted out, or just reminded');
+
+    var e = R.escapeHtml;
+    function day(d) { return R.formatDate(d) + (d.getFullYear() !== list.today.getFullYear() ? ', ' + d.getFullYear() : ''); }
+    var html = '<tr><th>Status</th><th>Due</th><th>Days</th><th>Customer</th><th>Phone</th><th>Equipment</th><th>Service</th><th class="num">Est. value</th><th>Email</th></tr>';
+    var SHOW = CLEAN ? 12 : 25;
+    list.rows.slice(0, SHOW).forEach(function (r) {
+      html += '<tr><td class="' + (r.status === 'Overdue' ? 'overdue' : 'soon') + '">' + r.status + '</td>' +
+        '<td>' + day(r.due) + '</td><td class="num">' + r.daysUntil + '</td><td>' + e(r.customer) + '</td>' +
+        '<td>' + e(r.phone) + '</td><td>' + e(r.equipment) + '</td><td>' + e(r.service) + '</td>' +
+        '<td class="num">' + R.formatMoney(r.priceCents) + '</td>' +
+        '<td class="' + (r.canEmail ? 'ready">Ready' : 'skip">' + e(r.skipReason)) + '</td></tr>';
+    });
+    if (list.rows.length > SHOW) html += '<tr><td colspan="9" style="color:#5b6675;">…and ' + (list.rows.length - SHOW) + ' more</td></tr>';
+    document.getElementById('due').innerHTML = html;
+
+    var sched = '<tr><th>Equipment</th><th>Service</th><th class="num">Every</th><th class="num">Price</th></tr>';
+    intervals.forEach(function (r) {
+      sched += '<tr><td>' + e(r['Equipment']) + '</td><td>' + e(r['Service']) + '</td>' +
+        '<td class="num">' + e(r['Every (months)']) + ' months</td><td class="num">' + R.formatMoney(R.toCents(r['Price'])) + '</td></tr>';
+    });
+    document.getElementById('schedule').innerHTML = sched;
+
+    var sample = list.toEmail[0];
+    if (sample) {
+      var mail = ReminderCore.buildEmail(sample, settings);
+      document.getElementById('email').innerHTML = '<b>To:</b> ' + e(mail.to) + '\n<b>Subject:</b> ' + e(mail.subject) + '\n\n' + e(mail.body);
+    }
+  });
+</script>
+</body>
+</html>

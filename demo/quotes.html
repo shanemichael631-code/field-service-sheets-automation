@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quote Builder Demo</title>
+<style>
+  body { margin: 0; background: #f3f5f7; font: 14px system-ui, sans-serif; color: #1f2a37; }
+  .bar { background: #fff; border-bottom: 1px solid #e3e7ec; padding: 10px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .demo { background: #fff4e5; color: #8a4b00; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+  .layout { display: flex; gap: 16px; padding: 16px; align-items: flex-start; flex-wrap: wrap; }
+  .side { width: 320px; flex: 0 0 320px; background: #fff; border: 1px solid #e3e7ec; border-radius: 6px; overflow: hidden; }
+  .side .title { padding: 10px 12px; font-weight: bold; border-bottom: 1px solid #e3e7ec; }
+  .side iframe { width: 100%; height: 860px; border: 0; display: block; }
+  .main { flex: 1; min-width: 320px; }
+  .tabs button { font: inherit; padding: 6px 12px; border: 1px solid #c9d1da; background: #fff; border-radius: 4px; cursor: pointer; }
+  .tabs button.on { background: #0b6e99; color: #fff; border-color: #0b6e99; }
+  .paper { background: #fff; padding: 32px; margin-top: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  table.grid { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.grid th, table.grid td { padding: 6px 8px; border-bottom: 1px solid #e3e7ec; text-align: left; }
+  table.grid th { color: #5b6675; font-weight: normal; background: #f8fafb; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 12px; background: #fdecea; color: #8a1c13; white-space: nowrap; }
+  .tag.warn { background: #fff4e5; color: #8a4b00; }
+  .summary { font-weight: bold; margin-bottom: 10px; }
+  .num { text-align: right !important; }
+  /* ?clean&view=...: single panel, no chrome, for portfolio images */
+  body.clean { background: #fff; }
+  body.clean .bar, body.clean .tabs { display: none; }
+  body.clean .layout { padding: 0; }
+  body.clean .paper { box-shadow: none; margin: 0; }
+  body.clean.only-side .main, body.clean.only-main .side { display: none; }
+  body.clean.only-side .side { border: 0; border-radius: 0; }
+  body.clean.only-main .main { min-width: 0; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <strong>Quote Builder</strong>
+  <span class="demo">Demo: fictional company, made-up products and prices</span>
+</div>
+<div class="layout">
+  <div class="side"><div class="title">Quote Builder <span style="font-weight:normal;color:#5b6675;">(Google Sheets sidebar)</span></div><iframe id="sidebar"></iframe></div>
+  <div class="main">
+    <div class="tabs">
+      <button data-v="pdf" class="on">Quote PDF</button>
+      <button data-v="health">Catalog health</button>
+      <button data-v="prices">Price list</button>
+      <button data-v="log">Quotes log</button>
+    </div>
+    <div class="paper" id="view">Loading…</div>
+  </div>
+</div>
+<script src="../apps-script/ReportCore.js"></script>
+<script src="../apps-script/quotes/QuoteCore.js"></script>
+<script>
+  var R = ReportCore, Q = QuoteCore, e = R.escapeHtml;
+  var params = new URLSearchParams(location.search);
+  if (params.has('clean')) document.body.classList.add('clean', params.get('view') === 'side' ? 'only-side' : 'only-main');
+  var DATA = {}, LOG = [], lastPdf = '', current = params.get('view') && params.get('view') !== 'side' ? params.get('view') : 'pdf';
+
+  function settings() {
+    var s = DATA.settings;
+    return {
+      company: { name: s['Company Name'], address: s['Company Address'], phone: s['Company Phone'], email: s['Company Email'],
+        color: s['Brand Color'], terms: s['Terms'] },
+      laborRateCents: R.toCents(s['Labor Rate']), taxPct: Q.toPct(s['Tax Rate %']), taxLabor: /^y/i.test(s['Tax Labor'] || ''),
+      validDays: Number(s['Quote Valid Days']) || 30, prefix: s['Quote Prefix'] || 'Q', folder: s['Quotes Folder'] || 'Quotes'
+    };
+  }
+  function priced() { return Q.priceCatalog(DATA.catalog, DATA.rules); }
+  var TODAY = '2026-10-23';
+
+  // Stand-in for the Apps Script functions in Quotes.js, using in-memory data instead of Sheets/Drive.
+  window.SERVER = {
+    getSidebarData: function () { return { laborRate: settings().laborRateCents / 100 }; },
+    searchCatalog: function (q) {
+      return Q.search(priced().items, q, 12).map(function (it) {
+        return { sku: it.sku, name: it.name, manufacturer: it.manufacturer, partNumber: it.partNumber, unit: it.unit, priceCents: it.priceCents };
+      });
+    },
+    previewQuote: function (input) {
+      var q = Q.buildQuote(Object.assign({ date: TODAY }, input), priced().items, settings());
+      return { totals: q.totals, errors: q.errors, warnings: q.warnings };
+    },
+    createQuote: function (input) {
+      var st = settings();
+      var q = Q.buildQuote(Object.assign({ date: TODAY }, input), priced().items, st);
+      if (q.errors.length) return { errors: q.errors };
+      var numbers = LOG.map(function (l) { return l.number; });
+      q.number = input.reviseOf ? Q.revisionNumber(numbers, input.reviseOf) : Q.nextQuoteNumber(numbers, st.prefix, q.date);
+      lastPdf = Q.renderQuoteHtml(q, st.company);
+      LOG.push({ number: q.number, date: q.date, customer: q.customer.name, totalCents: q.totals.totalCents, margin: q.totals.marginPct,
+        status: input.reviseOf ? 'Revision of ' + input.reviseOf : 'Created',
+        data: { number: q.number, customer: q.customer, laborHours: q.labor.hours, laborRateCents: q.labor.rateCents, notes: q.notes,
+          lines: q.lines.map(function (l) { return { sku: l.sku, name: l.name, qty: l.qty, discountPct: l.discountPct, unit: l.unit }; }) } });
+      show('pdf');
+      return { number: q.number, totalCents: q.totals.totalCents, url: '', folder: st.folder + ' › ' + q.customer.name + ' (demo: shown on the right)', errors: [] };
+    },
+    loadQuote: function (n) {
+      for (var i = LOG.length - 1; i >= 0; i--) if (LOG[i].number.toLowerCase() === String(n).trim().toLowerCase()) return LOG[i].data;
+      return null;
+    }
+  };
+
+  var SHIM = '<script>(function(){function runner(ok,fail){return new Proxy({},{get:function(_,n){' +
+    'if(n==="withSuccessHandler")return function(f){return runner(f,fail)};' +
+    'if(n==="withFailureHandler")return function(f){return runner(ok,f)};' +
+    'return function(){var a=JSON.parse(JSON.stringify([].slice.call(arguments)));setTimeout(function(){try{' +
+    'var r=parent.SERVER[n].apply(null,a);ok&&ok(r===undefined?r:JSON.parse(JSON.stringify(r)))}catch(err){fail&&fail(err)}},30)}}})}' +
+    'window.google={script:{run:runner()}}})();<\/script>';
+
+  function show(v) {
+    current = v;
+    document.querySelectorAll('.tabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === v); });
+    var view = document.getElementById('view');
+    if (v === 'pdf') view.innerHTML = lastPdf || '<p style="color:#5b6675;">Build a quote in the sidebar and click <b>Create PDF</b>; it appears here.</p>';
+    if (v === 'health') {
+      var h = Q.catalogHealth(priced());
+      view.innerHTML = '<div class="summary">Catalog health: ' + h.issues.length + ' items need attention</div>' +
+        '<table class="grid"><tr><th>Problem</th><th>Row</th><th>SKU</th><th>Name</th><th>Details</th></tr>' +
+        h.issues.map(function (x) {
+          var warn = /Possible duplicate|Missing part/.test(x.type);
+          return '<tr><td><span class="tag' + (warn ? ' warn' : '') + '">' + e(x.type) + '</span></td><td>' + x.row + '</td><td>' + e(x.sku) + '</td><td>' + e(x.name) + '</td><td>' + e(x.detail) + '</td></tr>';
+        }).join('') + '</table>';
+    }
+    if (v === 'prices') {
+      var p = priced();
+      view.innerHTML = '<div class="summary">Price list (calculated from cost + pricing rules)</div><table class="grid"><tr><th>SKU</th><th>Name</th><th>Category</th><th class="num">Cost</th><th class="num">Price</th><th class="num">Margin</th><th>Priced by</th></tr>' +
+        p.items.filter(function (it) { return it.active; }).map(function (it) {
+          return '<tr><td>' + e(it.sku) + '</td><td>' + e(it.name) + '</td><td>' + e(it.category) + '</td><td class="num">' + (it.hasCost ? R.formatMoney(it.costCents, true) : '—') +
+            '</td><td class="num">' + (it.priceCents === null ? '<span class="tag">no price</span>' : R.formatMoney(it.priceCents, true)) + '</td><td class="num">' +
+            (it.marginPct === null ? '' : it.marginPct + '%') + '</td><td>' + e(it.priceSource === 'none' ? '—' : it.priceSource) + '</td></tr>';
+        }).join('') + '</table>';
+    }
+    if (v === 'log') {
+      view.innerHTML = '<div class="summary">Quotes log</div><table class="grid"><tr><th>Quote #</th><th>Date</th><th>Customer</th><th class="num">Total</th><th class="num">Margin</th><th>Status</th></tr>' +
+        (LOG.length ? LOG.map(function (l) {
+          return '<tr><td>' + e(l.number) + '</td><td>' + R.formatDate(l.date) + '</td><td>' + e(l.customer) + '</td><td class="num">' + R.formatMoney(l.totalCents, true) +
+            '</td><td class="num">' + l.margin + '%</td><td>' + e(l.status) + '</td></tr>';
+        }).join('') : '<tr><td colspan="6" style="color:#5b6675;">No quotes yet.</td></tr>') + '</table>';
+    }
+  }
+  document.querySelectorAll('.tabs button').forEach(function (b) { b.onclick = function () { show(b.dataset.v); }; });
+
+  // A sample quote, built through the same code path the sidebar uses.
+  var SAMPLE = {
+    customer: { name: 'Jordan Ellis', address: '45 Sample Lane, Lakeview, ST 00000', phone: '(555) 555-0187', email: 'jordan@example.com' },
+    lines: [{ sku: 'EQP-201', qty: 1, discountPct: 5 }, { sku: 'PRT-108', qty: 2 }, { sku: 'PRT-101', qty: 1 }, { sku: 'CHM-007', qty: 4 }],
+    laborHours: 3, notes: 'Replace failed single-speed pump with a variable-speed pump, re-plumb with new unions, add salt to bring the system up to level. Includes haul-away of the old pump.'
+  };
+
+  Promise.all(['catalog', 'pricing-rules', 'settings'].map(function (n) {
+    return fetch('sample-data/quotes/' + n + '.csv').then(function (r) { return r.text(); });
+  })).then(function (t) {
+    DATA.catalog = R.rowsFromTable(R.parseCsv(t[0]));
+    DATA.rules = R.rowsFromTable(R.parseCsv(t[1]));
+    DATA.settings = {};
+    R.rowsFromTable(R.parseCsv(t[2])).forEach(function (r) { DATA.settings[r.Setting] = r.Value; });
+    var wanted = current;   // createQuote switches to the PDF view; keep the view asked for in the URL
+    if (params.has('sample')) SERVER.createQuote(Object.assign({ laborRateCents: settings().laborRateCents }, SAMPLE));
+    show(wanted);
+    return fetch('../apps-script/quotes/QuoteSidebar.html').then(function (r) { return r.text(); });
+  }).then(function (html) {
+    var frame = document.getElementById('sidebar');
+    frame.srcdoc = html.replace('<head>', '<head>' + SHIM);
+    if (params.has('sample')) frame.onload = function () { fillSidebar(frame.contentWindow); };
+  });
+
+  // Fill the real sidebar with the sample (for screenshots), using its own UI functions.
+  function fillSidebar(w) {
+    var d = w.document;
+    d.getElementById('cName').value = SAMPLE.customer.name;
+    d.getElementById('cAddr').value = SAMPLE.customer.address;
+    d.getElementById('cPhone').value = SAMPLE.customer.phone;
+    d.getElementById('cEmail').value = SAMPLE.customer.email;
+    d.getElementById('hours').value = SAMPLE.laborHours;
+    d.getElementById('notes').value = SAMPLE.notes;
+    var items = priced().items;
+    w.state.lines = SAMPLE.lines.map(function (l) {
+      var it = items.filter(function (x) { return x.sku === l.sku; })[0];
+      return { sku: l.sku, name: it.name, qty: l.qty, discountPct: l.discountPct || 0, unit: it.unit };
+    });
+    w.drawLines();
+    setTimeout(function () { w.preview(); }, 300);
+    d.getElementById('q').value = 'impeller';
+    w.doSearch();
+  }
+</script>
+</body>
+</html>
